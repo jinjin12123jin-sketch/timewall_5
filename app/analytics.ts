@@ -46,7 +46,6 @@ export const trackAnalytics = (event: string, properties: AnalyticsProperties = 
 
   const payload = {
     token: POSTHOG_KEY,
-    api_key: POSTHOG_KEY,
     event,
     distinct_id: getDistinctId(),
     properties: {
@@ -58,11 +57,6 @@ export const trackAnalytics = (event: string, properties: AnalyticsProperties = 
   const body = JSON.stringify(payload);
   const endpoint = `${POSTHOG_HOST}/i/v0/e/`;
 
-  if (navigator.sendBeacon) {
-    navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
-    return;
-  }
-
   window
     .fetch(endpoint, {
       method: "POST",
@@ -71,6 +65,8 @@ export const trackAnalytics = (event: string, properties: AnalyticsProperties = 
       keepalive: true,
     })
     .catch(() => {
-      // Analytics must never block the product experience.
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
+      }
     });
 };
