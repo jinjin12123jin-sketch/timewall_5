@@ -15,7 +15,8 @@ const isAnalyticsDisabled = () => {
 };
 
 const initPostHog = () => {
-  if (initialized || isAnalyticsDisabled()) return false;
+  if (initialized) return true;
+  if (isAnalyticsDisabled()) return false;
   const token = POSTHOG_KEY;
   if (!token) return false;
 
