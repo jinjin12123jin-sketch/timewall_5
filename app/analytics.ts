@@ -25,7 +25,6 @@ const initPostHog = () => {
     autocapture: false,
     capture_pageview: false,
     disable_session_recording: true,
-    person_profiles: "identified_only",
     request_batching: false,
   });
 
