@@ -45,6 +45,7 @@ export const trackAnalytics = (event: string, properties: AnalyticsProperties = 
   if (isAnalyticsDisabled()) return;
 
   const payload = {
+    token: POSTHOG_KEY,
     api_key: POSTHOG_KEY,
     event,
     distinct_id: getDistinctId(),
@@ -55,7 +56,7 @@ export const trackAnalytics = (event: string, properties: AnalyticsProperties = 
   };
 
   const body = JSON.stringify(payload);
-  const endpoint = `${POSTHOG_HOST}/capture/`;
+  const endpoint = `${POSTHOG_HOST}/i/v0/e/`;
 
   if (navigator.sendBeacon) {
     navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }));
@@ -73,4 +74,3 @@ export const trackAnalytics = (event: string, properties: AnalyticsProperties = 
       // Analytics must never block the product experience.
     });
 };
-
