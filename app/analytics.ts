@@ -30,7 +30,6 @@ const baseProperties = () => {
   })();
 
   return {
-    "$process_person_profile": false,
     app: "timewall",
     app_version: "timewall5",
     path: window.location.pathname,
@@ -49,7 +48,6 @@ export const trackAnalytics = (event: string, properties: AnalyticsProperties = 
     api_key: POSTHOG_KEY,
     event,
     distinct_id: getDistinctId(),
-    timestamp: new Date().toISOString(),
     properties: {
       ...baseProperties(),
       ...properties,
@@ -67,4 +65,3 @@ export const trackAnalytics = (event: string, properties: AnalyticsProperties = 
       // Analytics must never block the product experience.
     });
 };
-
