@@ -1,4 +1,11 @@
 type AnalyticsProperties = Record<string, string | number | boolean | null | undefined>;
+type AnalyticsDebugDetail = {
+  endpoint: string;
+  event: string;
+  status: number | "error" | "disabled";
+  message?: string;
+  sentAt: string;
+};
 
 const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
 const POSTHOG_HOST = (process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com").replace(/\/$/, "");
@@ -18,6 +25,16 @@ const isAnalyticsDisabled = () => {
   if (!POSTHOG_KEY || typeof window === "undefined") return true;
   if (window.localStorage.getItem(OPT_OUT_KEY) === "true") return true;
   return navigator.doNotTrack === "1";
+};
+
+const isDebugEnabled = () => {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("debug") === "analytics";
+};
+
+const emitDebug = (detail: AnalyticsDebugDetail) => {
+  if (!isDebugEnabled()) return;
+  window.dispatchEvent(new CustomEvent("timewall-analytics-debug", { detail }));
 };
 
 const baseProperties = () => {
@@ -42,7 +59,15 @@ const baseProperties = () => {
 };
 
 export const trackAnalytics = (event: string, properties: AnalyticsProperties = {}) => {
-  if (isAnalyticsDisabled()) return;
+  if (isAnalyticsDisabled()) {
+    emitDebug({
+      endpoint: "disabled",
+      event,
+      status: "disabled",
+      sentAt: new Date().toLocaleTimeString(),
+    });
+    return;
+  }
 
   const payload = {
     api_key: POSTHOG_KEY,
@@ -54,14 +79,34 @@ export const trackAnalytics = (event: string, properties: AnalyticsProperties = 
     },
   };
 
-  window
-    .fetch(`${POSTHOG_HOST}/i/v0/e/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      keepalive: true,
-    })
-    .catch(() => {
-      // Analytics must never block the product experience.
-    });
+  const sendEvent = async (endpoint: string) => {
+    try {
+      const response = await window.fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      });
+      emitDebug({
+        endpoint,
+        event,
+        status: response.status,
+        sentAt: new Date().toLocaleTimeString(),
+      });
+    } catch (error) {
+      emitDebug({
+        endpoint,
+        event,
+        status: "error",
+        message: error instanceof Error ? error.message : "unknown error",
+        sentAt: new Date().toLocaleTimeString(),
+      });
+    }
+  };
+
+  void sendEvent(`${POSTHOG_HOST}/i/v0/e/`);
+
+  if (isDebugEnabled()) {
+    void sendEvent(`${POSTHOG_HOST}/capture/`);
+  }
 };

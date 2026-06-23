@@ -15,6 +15,13 @@ type DayRecord = {
   blocks: number[];
   locked: boolean;
 };
+type AnalyticsDebugLog = {
+  endpoint: string;
+  event: string;
+  status: number | "error" | "disabled";
+  message?: string;
+  sentAt: string;
+};
 type TimewallState = {
   themeId: string;
   labels: string[];
@@ -372,6 +379,8 @@ export default function Home() {
   const [ready, setReady] = useState(false);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [toast, setToast] = useState("");
+  const [analyticsLogs, setAnalyticsLogs] = useState<AnalyticsDebugLog[]>([]);
+  const [analyticsDebugOpen, setAnalyticsDebugOpen] = useState(false);
   const openedRef = useRef(false);
   const importInputRef = useRef<HTMLInputElement>(null);
   const reportCardRef = useRef<HTMLElement | null>(null);
@@ -406,6 +415,20 @@ export default function Home() {
     const timer = window.setTimeout(() => setToast(""), 2200);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    const debugEnabled = new URLSearchParams(window.location.search).get("debug") === "analytics";
+    setAnalyticsDebugOpen(debugEnabled);
+    if (!debugEnabled) return;
+
+    const handleDebug = (event: Event) => {
+      const detail = (event as CustomEvent<AnalyticsDebugLog>).detail;
+      setAnalyticsLogs((current) => [detail, ...current].slice(0, 8));
+    };
+
+    window.addEventListener("timewall-analytics-debug", handleDebug);
+    return () => window.removeEventListener("timewall-analytics-debug", handleDebug);
+  }, []);
 
   const theme = useMemo(() => THEMES.find((item) => item.id === state.themeId) ?? THEMES[0], [state.themeId]);
   const selectedKey = dateKey(selectedDate);
@@ -610,6 +633,8 @@ export default function Home() {
 
         {toast && <div className="toast">{toast}</div>}
 
+        {analyticsDebugOpen && <AnalyticsDebugPanel logs={analyticsLogs} />}
+
         <input ref={importInputRef} className="visually-hidden" type="file" accept="application/json" onChange={importBackup} />
 
         {settingsOpen && (
@@ -625,6 +650,23 @@ export default function Home() {
         )}
       </section>
     </main>
+  );
+}
+
+function AnalyticsDebugPanel({ logs }: { logs: AnalyticsDebugLog[] }) {
+  return (
+    <aside className="analytics-debug" aria-label="Analytics debug">
+      <strong>Analytics debug</strong>
+      {logs.length === 0 ? (
+        <span>Waiting for events...</span>
+      ) : (
+        logs.map((log, index) => (
+          <span key={`${log.event}-${log.endpoint}-${index}`}>
+            {log.sentAt} · {log.event} · {log.status}
+          </span>
+        ))
+      )}
+    </aside>
   );
 }
 
