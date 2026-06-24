@@ -70,6 +70,7 @@ const initGoogleAnalytics = () => {
 };
 
 const baseProperties = () => ({
+  send_to: GA_MEASUREMENT_ID,
   app: "timewall",
   app_version: "timewall5",
   page_path: window.location.pathname,
@@ -102,4 +103,3 @@ export const trackAnalytics = (event: string, properties: AnalyticsProperties = 
     sentAt: new Date().toLocaleTimeString(),
   });
 };
-
