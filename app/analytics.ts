@@ -10,10 +10,11 @@ type AnalyticsDebugDetail = {
 const SHEETS_ANALYTICS_URL = process.env.NEXT_PUBLIC_SHEETS_ANALYTICS_URL;
 const OPT_OUT_KEY = "timewall.analytics.optOut";
 
-const isAnalyticsDisabled = () => {
-  if (!SHEETS_ANALYTICS_URL || typeof window === "undefined") return true;
-  if (window.localStorage.getItem(OPT_OUT_KEY) === "true") return true;
-  return navigator.doNotTrack === "1";
+const getDisabledReason = () => {
+  if (typeof window === "undefined") return "not_in_browser";
+  if (!SHEETS_ANALYTICS_URL) return "missing_sheets_endpoint";
+  if (window.localStorage.getItem(OPT_OUT_KEY) === "true") return "opted_out";
+  return "";
 };
 
 const isDebugEnabled = () => {
@@ -38,11 +39,13 @@ const baseProperties = () => ({
 });
 
 export const trackAnalytics = (event: string, properties: AnalyticsProperties = {}) => {
-  if (isAnalyticsDisabled()) {
+  const disabledReason = getDisabledReason();
+  if (disabledReason) {
     emitDebug({
       endpoint: "google_sheets",
       event,
       status: "disabled",
+      message: disabledReason,
       sentAt: new Date().toLocaleTimeString(),
     });
     return;
@@ -61,7 +64,8 @@ export const trackAnalytics = (event: string, properties: AnalyticsProperties = 
   };
 
   try {
-    void window.fetch(endpoint, {
+    void window
+      .fetch(endpoint, {
       method: "POST",
       mode: "no-cors",
       headers: {
@@ -69,14 +73,24 @@ export const trackAnalytics = (event: string, properties: AnalyticsProperties = 
       },
       body: JSON.stringify(payload),
       keepalive: true,
-    });
-
-    emitDebug({
-      endpoint: "google_sheets",
-      event,
-      status: "sent",
-      sentAt: new Date().toLocaleTimeString(),
-    });
+      })
+      .then(() => {
+        emitDebug({
+          endpoint: "google_sheets",
+          event,
+          status: "sent",
+          sentAt: new Date().toLocaleTimeString(),
+        });
+      })
+      .catch((error: unknown) => {
+        emitDebug({
+          endpoint: "google_sheets",
+          event,
+          status: "error",
+          message: error instanceof Error ? error.message : String(error),
+          sentAt: new Date().toLocaleTimeString(),
+        });
+      });
   } catch (error) {
     emitDebug({
       endpoint: "google_sheets",
