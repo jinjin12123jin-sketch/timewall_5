@@ -3,7 +3,7 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import { ChevronLeft, ChevronRight, Settings, Share } from "lucide-react";
-import { trackAnalytics } from "./analytics";
+import { trackAnalytics, trackDailyRecord, trackLabelSnapshot, trackSessionStart } from "./analytics";
 
 type ViewMode = "day" | "week" | "month" | "year" | "report";
 type ReportStyle = "receipt" | "poster" | "quiet";
@@ -384,6 +384,16 @@ export default function Home() {
   const openedRef = useRef(false);
   const importInputRef = useRef<HTMLInputElement>(null);
   const reportCardRef = useRef<HTMLElement | null>(null);
+  const theme = useMemo(() => THEMES.find((item) => item.id === state.themeId) ?? THEMES[0], [state.themeId]);
+  const selectedKey = dateKey(selectedDate);
+  const todayKey = dateKey(new Date());
+  const selectedDay = getDay(state, selectedKey);
+  const weekStart = startOfWeek(selectedDate);
+  const weekDates = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
+  const weekBlocks = weekDates.flatMap((date) => getDay(state, dateKey(date)).blocks);
+  const reportCounts = [0, 0, 0, 0].map((_, colorIndex) => weekBlocks.filter((block) => block === colorIndex).length);
+  const filledBlocks = weekBlocks.length - reportCounts[0];
+  const weekTone = reportCounts.indexOf(Math.max(...reportCounts));
 
   useEffect(() => {
     try {
@@ -403,12 +413,23 @@ export default function Home() {
   useEffect(() => {
     if (!ready || openedRef.current) return;
     openedRef.current = true;
-    trackAnalytics("timewall_app_open", {
+    trackSessionStart({
+      entry_view: view,
+      selected_date: selectedKey,
+      theme_id: state.themeId,
+    });
+    trackAnalytics("app_open", {
       initial_view: view,
       theme_id: state.themeId,
       saved_days: Object.keys(state.days).length,
+      selected_date: selectedKey,
     });
-  }, [ready, state.days, state.themeId, view]);
+    trackLabelSnapshot({
+      trigger: "app_open",
+      themeId: state.themeId,
+      labels: state.labels,
+    });
+  }, [ready, selectedKey, state.days, state.labels, state.themeId, view]);
 
   useEffect(() => {
     if (!toast) return;
@@ -430,17 +451,6 @@ export default function Home() {
     return () => window.removeEventListener("timewall-analytics-debug", handleDebug);
   }, []);
 
-  const theme = useMemo(() => THEMES.find((item) => item.id === state.themeId) ?? THEMES[0], [state.themeId]);
-  const selectedKey = dateKey(selectedDate);
-  const todayKey = dateKey(new Date());
-  const selectedDay = getDay(state, selectedKey);
-  const weekStart = startOfWeek(selectedDate);
-  const weekDates = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
-  const weekBlocks = weekDates.flatMap((date) => getDay(state, dateKey(date)).blocks);
-  const reportCounts = [0, 0, 0, 0].map((_, colorIndex) => weekBlocks.filter((block) => block === colorIndex).length);
-  const filledBlocks = weekBlocks.length - reportCounts[0];
-  const weekTone = reportCounts.indexOf(Math.max(...reportCounts));
-
   const updateDay = (key: string, updater: (day: DayRecord) => DayRecord) => {
     setState((current) => ({
       ...current,
@@ -453,12 +463,23 @@ export default function Home() {
 
   const cycleBlock = (blockIndex: number) => {
     if (selectedDay.locked) return;
+    const fromColorIndex = selectedDay.blocks[blockIndex];
     const nextColorIndex = (selectedDay.blocks[blockIndex] + 1) % 4;
-    trackAnalytics("timewall_block_edit", {
+    const nextBlocks = selectedDay.blocks.map((block, index) => (index === blockIndex ? nextColorIndex : block));
+    trackAnalytics("block_update", {
+      selected_date: selectedKey,
       block_index: blockIndex,
+      block_time_range: BLOCKS[blockIndex].range,
+      from_color_index: fromColorIndex,
       next_color_index: nextColorIndex,
       theme_id: state.themeId,
       view,
+    });
+    trackDailyRecord({
+      recordDate: selectedKey,
+      blocksState: nextBlocks,
+      themeId: state.themeId,
+      isLocked: selectedDay.locked,
     });
     updateDay(selectedKey, (day) => ({
       ...day,
@@ -471,34 +492,65 @@ export default function Home() {
   const goToday = () => {
     setSelectedDate(normalizeDate(new Date()));
     setView("day");
-    trackAnalytics("timewall_go_today", { from_view: view });
+    trackAnalytics("go_today", { from_view: view, selected_date: selectedKey });
   };
 
   const selectDate = (date: Date, nextView: ViewMode = "day") => {
     setSelectedDate(normalizeDate(date));
     setView(nextView);
-    trackAnalytics("timewall_date_select", { from_view: view, next_view: nextView });
+    trackAnalytics("date_select", {
+      from_view: view,
+      next_view: nextView,
+      selected_date: dateKey(date),
+    });
   };
 
   const changeView = (nextView: ViewMode) => {
     if (nextView === view) return;
     setView(nextView);
-    trackAnalytics("timewall_view_switch", { from_view: view, next_view: nextView });
+    trackAnalytics("view_switch", {
+      from_view: view,
+      next_view: nextView,
+      selected_date: selectedKey,
+    });
   };
 
   const openReport = (source: string) => {
     setView("report");
-    trackAnalytics("timewall_report_open", { source, from_view: view });
+    trackAnalytics("report_open", {
+      source,
+      from_view: view,
+      selected_week_start: dateKey(weekDates[0]),
+      selected_week_end: dateKey(weekDates[6]),
+      filled_blocks: filledBlocks,
+      dominant_color_index: weekTone,
+      report_style: reportStyle,
+    });
+    trackLabelSnapshot({
+      trigger: "report_open",
+      themeId: state.themeId,
+      labels: state.labels,
+    });
   };
 
   const changeTheme = (themeId: string) => {
     setState((current) => ({ ...current, themeId }));
-    trackAnalytics("timewall_theme_change", { theme_id: themeId });
+    trackAnalytics("theme_change", { theme_id: themeId, previous_theme_id: state.themeId });
+    trackLabelSnapshot({
+      trigger: "theme_change",
+      themeId,
+      labels: state.labels,
+    });
   };
 
   const changeReportStyle = (style: ReportStyle) => {
     setReportStyle(style);
-    trackAnalytics("timewall_report_style_change", { report_style: style });
+    trackAnalytics("report_style_change", {
+      report_style: style,
+      selected_week_start: dateKey(weekDates[0]),
+      selected_week_end: dateKey(weekDates[6]),
+      filled_blocks: filledBlocks,
+    });
   };
 
   const handleTouchEnd = (clientX: number) => {
@@ -536,9 +588,30 @@ export default function Home() {
     setToast("本地记录已清空");
   };
 
+  const toggleDayLock = () => {
+    const nextLocked = !selectedDay.locked;
+    trackAnalytics("day_lock_toggle", {
+      selected_date: selectedKey,
+      is_locked: nextLocked,
+      view,
+    });
+    trackDailyRecord({
+      recordDate: selectedKey,
+      blocksState: selectedDay.blocks,
+      themeId: state.themeId,
+      isLocked: nextLocked,
+    });
+    updateDay(selectedKey, (day) => ({ ...day, locked: !day.locked }));
+  };
+
   const copyReport = async () => {
     const text = createReportText(state.labels, reportCounts, filledBlocks);
-    trackAnalytics("timewall_report_copy", { filled_blocks: filledBlocks, report_style: reportStyle });
+    trackAnalytics("report_copy", {
+      filled_blocks: filledBlocks,
+      report_style: reportStyle,
+      selected_week_start: dateKey(weekDates[0]),
+      selected_week_end: dateKey(weekDates[6]),
+    });
     try {
       await navigator.clipboard.writeText(text);
       setToast("小报文字已复制");
@@ -548,7 +621,13 @@ export default function Home() {
   };
 
   const exportReport = async () => {
-    trackAnalytics("timewall_report_export", { filled_blocks: filledBlocks, report_style: reportStyle });
+    trackAnalytics("report_export", {
+      filled_blocks: filledBlocks,
+      report_style: reportStyle,
+      selected_week_start: dateKey(weekDates[0]),
+      selected_week_end: dateKey(weekDates[6]),
+      dominant_color_index: weekTone,
+    });
     setToast("正在导出图片");
     const preview = window.open("", "_blank");
     openImageLoading(preview);
@@ -562,6 +641,28 @@ export default function Home() {
       preview?.close();
       setToast("\u56fe\u7247\u751f\u6210\u5931\u8d25\uff0c\u53ef\u76f4\u63a5\u622a\u56fe\u4fdd\u5b58\u5f53\u524d\u5c0f\u62a5");
     }
+  };
+
+  const changeLabel = (index: number, value: string) => {
+    setState((current) => ({
+      ...current,
+      labels: current.labels.map((label, labelIndex) => (labelIndex === index ? value : label)),
+    }));
+  };
+
+  const commitLabel = (index: number) => {
+    const label = state.labels[index] ?? "";
+    trackAnalytics("label_change", {
+      color_index: index,
+      label_length: label.trim().length,
+      theme_id: state.themeId,
+      view,
+    });
+    trackLabelSnapshot({
+      trigger: "label_change",
+      themeId: state.themeId,
+      labels: state.labels,
+    });
   };
 
   return (
@@ -607,7 +708,8 @@ export default function Home() {
               state={state}
               theme={theme}
               labels={state.labels}
-              setLabels={(labels) => setState((current) => ({ ...current, labels }))}
+              onLabelChange={changeLabel}
+              onLabelCommit={commitLabel}
               reportStyle={reportStyle}
               setReportStyle={changeReportStyle}
               counts={reportCounts}
@@ -622,7 +724,7 @@ export default function Home() {
         {view === "day" && (
           <button
             className={`lock-button ${selectedDay.locked ? "locked" : ""}`}
-            onClick={() => updateDay(selectedKey, (day) => ({ ...day, locked: !day.locked }))}
+            onClick={toggleDayLock}
             aria-label={selectedDay.locked ? "Unlock this day" : "Lock this day"}
           >
             {selectedDay.locked ? <UnlockIcon /> : <LockIcon />}
@@ -965,7 +1067,8 @@ function ReportView({
   state,
   theme,
   labels,
-  setLabels,
+  onLabelChange,
+  onLabelCommit,
   reportStyle,
   setReportStyle,
   counts,
@@ -978,7 +1081,8 @@ function ReportView({
   state: TimewallState;
   theme: ThemeOption;
   labels: string[];
-  setLabels: (labels: string[]) => void;
+  onLabelChange: (index: number, value: string) => void;
+  onLabelCommit: (index: number) => void;
   reportStyle: ReportStyle;
   setReportStyle: (style: ReportStyle) => void;
   counts: number[];
@@ -1018,7 +1122,11 @@ function ReportView({
             <i style={{ background: color }} />
             <input
               value={labels[index]}
-              onChange={(event) => setLabels(labels.map((label, labelIndex) => (labelIndex === index ? event.target.value : label)))}
+              onChange={(event) => onLabelChange(index, event.target.value)}
+              onBlur={() => onLabelCommit(index)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
               placeholder={index === 0 ? "空白" : "给这个颜色起名"}
             />
           </label>

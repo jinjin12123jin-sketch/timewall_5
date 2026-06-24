@@ -814,6 +814,7 @@ button {
 }
 
 .privacy-note {
+  display: none;
   margin: -2px 0 0;
   text-align: center;
 }
