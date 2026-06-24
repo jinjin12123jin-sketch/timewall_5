@@ -1,6 +1,8 @@
 # Timewall 5 Anonymous Analytics
 
-Timewall 5 keeps user records local by default. The analytics layer only sends anonymous product events and does not send color labels, daily notes, backup files, or the user's Timewall content.
+Timewall 5 now uses Google Analytics 4 (GA4) through the official Google tag (`gtag.js`).
+
+The app only sends anonymous product events. It does not send color labels, daily notes, backup files, or the user's Timewall content.
 
 ## Events
 
@@ -15,33 +17,57 @@ Timewall 5 keeps user records local by default. The analytics layer only sends a
 - `timewall_report_copy`: user copies report text
 - `timewall_report_export`: user exports report image
 
-## Provider
+## Required GitHub Variable
 
-The current implementation sends events directly to PostHog's capture endpoint when the public project key is configured. If no key is configured, analytics is a no-op.
+- `NEXT_PUBLIC_GA_MEASUREMENT_ID`
 
-Required GitHub repository variable:
+The value should look like:
 
-- `NEXT_PUBLIC_POSTHOG_KEY`
+```text
+G-XXXXXXXXXX
+```
 
-Optional GitHub repository variable:
+## How To Get The GA4 Measurement ID
 
-- `NEXT_PUBLIC_POSTHOG_HOST`
+In Google Analytics:
 
-Use the host shown in your PostHog project settings. If this variable is empty, Timewall uses `https://us.i.posthog.com`.
+1. Open `Admin`.
+2. Open `Data streams`.
+3. Choose or create a `Web` stream.
+4. Use the Timewall URL:
+
+```text
+https://jinjin12123jin-sketch.github.io/timewall_5/
+```
+
+5. Copy the `Measurement ID`.
 
 ## GitHub Pages Setup
 
-1. Open `Settings` in the `timewall_5` GitHub repository.
-2. Open `Secrets and variables` -> `Actions` -> `Variables`.
-3. Add `NEXT_PUBLIC_POSTHOG_KEY`.
-4. Optionally add `NEXT_PUBLIC_POSTHOG_HOST`.
+1. Open the `timewall_5` GitHub repository.
+2. Open `Settings`.
+3. Open `Secrets and variables` -> `Actions` -> `Variables`.
+4. Add `NEXT_PUBLIC_GA_MEASUREMENT_ID`.
 5. Re-run the GitHub Pages workflow, or push a new commit.
 
-After deployment, events should appear in PostHog after users visit the public GitHub Pages link.
+## Debug Link
+
+After deployment, open:
+
+```text
+https://jinjin12123jin-sketch.github.io/timewall_5/?debug=analytics
+```
+
+When you click a time block, the small debug panel should show:
+
+```text
+timewall_block_edit · queued
+```
+
+In GA4, use `Reports` -> `Realtime` or `Admin` -> `DebugView` to verify events.
 
 ## Privacy Guardrails
 
-- A random anonymous browser id is stored in localStorage.
 - Browser Do Not Track disables analytics.
 - Users' local records remain in the browser.
 - Do not add label text, note text, backup JSON, or raw daily block arrays to analytics events.

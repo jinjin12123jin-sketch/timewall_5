@@ -2,27 +2,27 @@ type AnalyticsProperties = Record<string, string | number | boolean | null | und
 type AnalyticsDebugDetail = {
   endpoint: string;
   event: string;
-  status: number | "error" | "disabled";
+  status: number | "queued" | "disabled" | "error";
   message?: string;
   sentAt: string;
 };
 
-const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
-const POSTHOG_HOST = (process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com").replace(/\/$/, "");
-const DISTINCT_ID_KEY = "timewall.analytics.distinctId";
+type GtagCommand = "js" | "config" | "event";
+
+declare global {
+  interface Window {
+    dataLayer?: unknown[];
+    gtag?: (command: GtagCommand, target: string | Date, params?: Record<string, unknown>) => void;
+  }
+}
+
+const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 const OPT_OUT_KEY = "timewall.analytics.optOut";
 
-const getDistinctId = () => {
-  if (typeof window === "undefined") return "";
-  const stored = window.localStorage.getItem(DISTINCT_ID_KEY);
-  if (stored) return stored;
-  const generated = window.crypto?.randomUUID?.() ?? `tw_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  window.localStorage.setItem(DISTINCT_ID_KEY, generated);
-  return generated;
-};
+let initialized = false;
 
 const isAnalyticsDisabled = () => {
-  if (!POSTHOG_KEY || typeof window === "undefined") return true;
+  if (!GA_MEASUREMENT_ID || typeof window === "undefined") return true;
   if (window.localStorage.getItem(OPT_OUT_KEY) === "true") return true;
   return navigator.doNotTrack === "1";
 };
@@ -37,31 +37,52 @@ const emitDebug = (detail: AnalyticsDebugDetail) => {
   window.dispatchEvent(new CustomEvent("timewall-analytics-debug", { detail }));
 };
 
-const baseProperties = () => {
-  const referrerHost = (() => {
-    try {
-      return document.referrer ? new URL(document.referrer).host : "";
-    } catch {
-      return "";
-    }
-  })();
+const initGoogleAnalytics = () => {
+  if (initialized) return true;
+  if (isAnalyticsDisabled()) return false;
+  const measurementId = GA_MEASUREMENT_ID;
+  if (!measurementId) return false;
 
-  return {
-    app: "timewall",
-    app_version: "timewall5",
-    path: window.location.pathname,
-    viewport_width: window.innerWidth,
-    viewport_height: window.innerHeight,
-    language: navigator.language,
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    referrer_host: referrerHost,
-  };
+  window.dataLayer = window.dataLayer || [];
+  window.gtag =
+    window.gtag ||
+    function gtag(...args) {
+      window.dataLayer?.push(args);
+    };
+
+  const existingScript = document.querySelector(`script[src*="${measurementId}"]`);
+  if (!existingScript) {
+    const script = document.createElement("script");
+    script.async = true;
+    script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(measurementId)}`;
+    document.head.appendChild(script);
+  }
+
+  window.gtag("js", new Date());
+  window.gtag("config", measurementId, {
+    page_path: window.location.pathname,
+    page_title: document.title,
+    send_page_view: true,
+  });
+
+  initialized = true;
+  return true;
 };
 
+const baseProperties = () => ({
+  app: "timewall",
+  app_version: "timewall5",
+  page_path: window.location.pathname,
+  viewport_width: window.innerWidth,
+  viewport_height: window.innerHeight,
+  language: navigator.language,
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+});
+
 export const trackAnalytics = (event: string, properties: AnalyticsProperties = {}) => {
-  if (isAnalyticsDisabled()) {
+  if (!initGoogleAnalytics()) {
     emitDebug({
-      endpoint: "disabled",
+      endpoint: "google_analytics",
       event,
       status: "disabled",
       sentAt: new Date().toLocaleTimeString(),
@@ -69,44 +90,16 @@ export const trackAnalytics = (event: string, properties: AnalyticsProperties = 
     return;
   }
 
-  const payload = {
-    api_key: POSTHOG_KEY,
+  window.gtag?.("event", event, {
+    ...baseProperties(),
+    ...properties,
+  });
+
+  emitDebug({
+    endpoint: "google_analytics",
     event,
-    distinct_id: getDistinctId(),
-    properties: {
-      ...baseProperties(),
-      ...properties,
-    },
-  };
-
-  const sendEvent = async (endpoint: string) => {
-    try {
-      const response = await window.fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        keepalive: true,
-      });
-      emitDebug({
-        endpoint,
-        event,
-        status: response.status,
-        sentAt: new Date().toLocaleTimeString(),
-      });
-    } catch (error) {
-      emitDebug({
-        endpoint,
-        event,
-        status: "error",
-        message: error instanceof Error ? error.message : "unknown error",
-        sentAt: new Date().toLocaleTimeString(),
-      });
-    }
-  };
-
-  void sendEvent(`${POSTHOG_HOST}/i/v0/e/`);
-
-  if (isDebugEnabled()) {
-    void sendEvent(`${POSTHOG_HOST}/capture/`);
-  }
+    status: "queued",
+    sentAt: new Date().toLocaleTimeString(),
+  });
 };
+
