@@ -18,7 +18,7 @@ type DayRecord = {
 type AnalyticsDebugLog = {
   endpoint: string;
   event: string;
-  status: number | "error" | "disabled";
+  status: "sent" | "error" | "disabled";
   message?: string;
   sentAt: string;
 };

@@ -1,8 +1,8 @@
 # Timewall 5 Anonymous Analytics
 
-Timewall 5 now uses Google Analytics 4 (GA4) through the official Google tag (`gtag.js`).
+Timewall 5 writes anonymous product events to a Google Sheet through a Google Apps Script Web App.
 
-The app only sends anonymous product events. It does not send color labels, daily notes, backup files, or the user's Timewall content.
+The app only sends interaction metadata. It does not send color labels, daily notes, backup files, or the user's Timewall content.
 
 ## Events
 
@@ -19,35 +19,16 @@ The app only sends anonymous product events. It does not send color labels, dail
 
 ## Required GitHub Variable
 
-- `NEXT_PUBLIC_GA_MEASUREMENT_ID`
+- `NEXT_PUBLIC_SHEETS_ANALYTICS_URL`
 
-The value should look like:
-
-```text
-G-XXXXXXXXXX
-```
-
-## How To Get The GA4 Measurement ID
-
-In Google Analytics:
-
-1. Open `Admin`.
-2. Open `Data streams`.
-3. Choose or create a `Web` stream.
-4. Use the Timewall URL:
-
-```text
-https://jinjin12123jin-sketch.github.io/timewall_5/
-```
-
-5. Copy the `Measurement ID`.
+The value should be the Apps Script Web App URL ending in `/exec`.
 
 ## GitHub Pages Setup
 
 1. Open the `timewall_5` GitHub repository.
 2. Open `Settings`.
 3. Open `Secrets and variables` -> `Actions` -> `Variables`.
-4. Add `NEXT_PUBLIC_GA_MEASUREMENT_ID`.
+4. Add `NEXT_PUBLIC_SHEETS_ANALYTICS_URL`.
 5. Re-run the GitHub Pages workflow, or push a new commit.
 
 ## Debug Link
@@ -61,14 +42,13 @@ https://jinjin12123jin-sketch.github.io/timewall_5/?debug=analytics
 When you click a time block, the small debug panel should show:
 
 ```text
-timewall_block_edit · queued
+timewall_block_edit · sent
 ```
 
-In GA4, use `Reports` -> `Realtime` or `Admin` -> `DebugView` to verify events.
+Then open the Google Sheet and check the `events` tab. A new row should appear after each interaction.
 
 ## Privacy Guardrails
 
 - Browser Do Not Track disables analytics.
 - Users' local records remain in the browser.
 - Do not add label text, note text, backup JSON, or raw daily block arrays to analytics events.
-

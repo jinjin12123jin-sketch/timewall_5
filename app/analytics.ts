@@ -2,27 +2,16 @@ type AnalyticsProperties = Record<string, string | number | boolean | null | und
 type AnalyticsDebugDetail = {
   endpoint: string;
   event: string;
-  status: number | "queued" | "disabled" | "error";
+  status: "sent" | "disabled" | "error";
   message?: string;
   sentAt: string;
 };
 
-type GtagCommand = "js" | "config" | "event";
-
-declare global {
-  interface Window {
-    dataLayer?: unknown[];
-    gtag?: (command: GtagCommand, target: string | Date, params?: Record<string, unknown>) => void;
-  }
-}
-
-const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
+const SHEETS_ANALYTICS_URL = process.env.NEXT_PUBLIC_SHEETS_ANALYTICS_URL;
 const OPT_OUT_KEY = "timewall.analytics.optOut";
 
-let initialized = false;
-
 const isAnalyticsDisabled = () => {
-  if (!GA_MEASUREMENT_ID || typeof window === "undefined") return true;
+  if (!SHEETS_ANALYTICS_URL || typeof window === "undefined") return true;
   if (window.localStorage.getItem(OPT_OUT_KEY) === "true") return true;
   return navigator.doNotTrack === "1";
 };
@@ -37,40 +26,7 @@ const emitDebug = (detail: AnalyticsDebugDetail) => {
   window.dispatchEvent(new CustomEvent("timewall-analytics-debug", { detail }));
 };
 
-const initGoogleAnalytics = () => {
-  if (initialized) return true;
-  if (isAnalyticsDisabled()) return false;
-  const measurementId = GA_MEASUREMENT_ID;
-  if (!measurementId) return false;
-
-  window.dataLayer = window.dataLayer || [];
-  window.gtag =
-    window.gtag ||
-    function gtag(...args) {
-      window.dataLayer?.push(args);
-    };
-
-  const existingScript = document.querySelector(`script[src*="${measurementId}"]`);
-  if (!existingScript) {
-    const script = document.createElement("script");
-    script.async = true;
-    script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(measurementId)}`;
-    document.head.appendChild(script);
-  }
-
-  window.gtag("js", new Date());
-  window.gtag("config", measurementId, {
-    page_path: window.location.pathname,
-    page_title: document.title,
-    send_page_view: true,
-  });
-
-  initialized = true;
-  return true;
-};
-
 const baseProperties = () => ({
-  send_to: GA_MEASUREMENT_ID,
   app: "timewall",
   app_version: "timewall5",
   page_path: window.location.pathname,
@@ -78,12 +34,13 @@ const baseProperties = () => ({
   viewport_height: window.innerHeight,
   language: navigator.language,
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  user_agent: navigator.userAgent,
 });
 
 export const trackAnalytics = (event: string, properties: AnalyticsProperties = {}) => {
-  if (!initGoogleAnalytics()) {
+  if (isAnalyticsDisabled()) {
     emitDebug({
-      endpoint: "google_analytics",
+      endpoint: "google_sheets",
       event,
       status: "disabled",
       sentAt: new Date().toLocaleTimeString(),
@@ -91,15 +48,42 @@ export const trackAnalytics = (event: string, properties: AnalyticsProperties = 
     return;
   }
 
-  window.gtag?.("event", event, {
-    ...baseProperties(),
-    ...properties,
-  });
+  const endpoint = SHEETS_ANALYTICS_URL;
+  if (!endpoint) return;
 
-  emitDebug({
-    endpoint: "google_analytics",
+  const payload = {
     event,
-    status: "queued",
-    sentAt: new Date().toLocaleTimeString(),
-  });
+    sent_at: new Date().toISOString(),
+    properties: {
+      ...baseProperties(),
+      ...properties,
+    },
+  };
+
+  try {
+    void window.fetch(endpoint, {
+      method: "POST",
+      mode: "no-cors",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    });
+
+    emitDebug({
+      endpoint: "google_sheets",
+      event,
+      status: "sent",
+      sentAt: new Date().toLocaleTimeString(),
+    });
+  } catch (error) {
+    emitDebug({
+      endpoint: "google_sheets",
+      event,
+      status: "error",
+      message: error instanceof Error ? error.message : String(error),
+      sentAt: new Date().toLocaleTimeString(),
+    });
+  }
 };
