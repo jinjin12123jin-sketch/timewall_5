@@ -692,33 +692,6 @@ button {
   font-weight: 700;
 }
 
-.analytics-debug {
-  position: fixed;
-  right: 14px;
-  bottom: 14px;
-  z-index: 40;
-  width: min(360px, calc(100vw - 28px));
-  display: grid;
-  gap: 5px;
-  border: 1px solid rgba(7, 7, 7, 0.12);
-  border-radius: 14px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 250, 0.94);
-  box-shadow: 0 16px 44px rgba(20, 18, 14, 0.14);
-  color: #070707;
-  font-size: 11px;
-}
-
-.analytics-debug strong {
-  font-size: 12px;
-}
-
-.analytics-debug span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .visually-hidden {
   position: absolute;
   width: 1px;
